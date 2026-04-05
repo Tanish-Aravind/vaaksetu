@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import axios from "axios"
 
-const API_URL = "http://localhost:8000"
+const API_URL = "https://vaaksetu-production.up.railway.app"
 
 export default function SummaryPage({ messages, severity, language, onBack }) {
   const [summary, setSummary] = useState(null)
