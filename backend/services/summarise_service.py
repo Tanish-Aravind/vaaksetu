@@ -1,14 +1,18 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import httpx
 import json
+import os
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "gemma2:2b"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+MODEL_NAME = "llama-3.3-70b-versatile"
 
 SUMMARISE_PROMPT = """You are a clinical assistant helping therapists in Karnataka, India.
 Read the conversation and produce a structured summary.
-The user may have spoken in Kannada or English.
 
-You must respond ONLY in this exact JSON format, nothing else:
+Respond ONLY in this exact JSON format:
 {
   "summary_kannada": "2-3 sentence summary in Kannada script",
   "summary_english": "2-3 sentence summary in English",
@@ -24,33 +28,32 @@ def summarise_conversation(messages: list, severity: str) -> dict:
         role = "User" if msg["role"] == "user" else "VaakSetu"
         conversation_text += f"{role}: {msg['content']}\n"
 
-    prompt = f"""{SUMMARISE_PROMPT}
-
-Severity level: {severity}
-
-Conversation:
-{conversation_text}
-
-Respond in JSON only:"""
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
     payload = {
         "model": MODEL_NAME,
-        "prompt": prompt,
-        "stream": False
+        "messages": [
+            {"role": "system", "content": SUMMARISE_PROMPT},
+            {"role": "user", "content": f"Severity: {severity}\n\nConversation:\n{conversation_text}"}
+        ],
+        "temperature": 0.3,
+        "max_tokens": 500
     }
 
-    with httpx.Client(timeout=60.0) as client:
-        response = client.post(OLLAMA_URL, json=payload)
+    with httpx.Client(timeout=30.0) as client:
+        response = client.post(GROQ_API_URL, json=payload, headers=headers)
         response.raise_for_status()
 
     result = response.json()
-    raw_text = result["response"].strip()
+    raw_text = result["choices"][0]["message"]["content"].strip()
 
     try:
         start = raw_text.find("{")
         end = raw_text.rfind("}") + 1
-        json_str = raw_text[start:end]
-        parsed = json.loads(json_str)
+        parsed = json.loads(raw_text[start:end])
         return {
             "summary_kannada": parsed.get("summary_kannada", ""),
             "summary_english": parsed.get("summary_english", ""),
@@ -65,6 +68,6 @@ Respond in JSON only:"""
             "summary_english": "Summary could not be generated",
             "key_concerns": [],
             "emotional_state": "unknown",
-            "recommended_action": "Please review the conversation manually",
+            "recommended_action": "Please review manually",
             "severity": severity
         }

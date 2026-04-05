@@ -1,10 +1,12 @@
-import os
-
+from dotenv import load_dotenv
+load_dotenv()
 import httpx
 import json
+import os
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "gemma2:2b"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+MODEL_NAME = "llama-3.3-70b-versatile"
 
 SYSTEM_PROMPTS = {
     "en": """You are VaakSetu, a mental health support assistant.
@@ -19,7 +21,7 @@ Respond ONLY in this exact JSON format:
 
 Severity guidelines:
 - low: general stress, mild anxiety, everyday worries
-- medium: persistent sadness, difficulty functioning, needs professional support  
+- medium: persistent sadness, difficulty functioning, needs professional support
 - high: mentions of self harm, suicide, crisis, extreme distress""",
 
     "default": """ನೀವು VaakSetu ಎಂಬ ಮಾನಸಿಕ ಆರೋಗ್ಯ ಸಹಾಯಕ.
@@ -33,41 +35,49 @@ You must respond ONLY in this exact JSON format:
   "severity": "low" or "medium" or "high"
 }
 
-Severity guidelines:
-- low: general stress, mild anxiety, everyday worries
-- medium: persistent sadness, difficulty functioning, needs professional support
-- high: mentions of self harm, suicide, crisis, extreme distress"""
+Severity:
+- low: general stress, mild anxiety
+- medium: persistent sadness, needs professional support
+- high: self harm, suicide, crisis"""
 }
 
 
 def chat_with_gemma(user_message: str, language: str = "kn") -> dict:
     system_prompt = SYSTEM_PROMPTS["en"] if language == "en" else SYSTEM_PROMPTS["default"]
-    prompt = f"{system_prompt}\n\nUser: {user_message}\n\nRespond in JSON only:"
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
     payload = {
         "model": MODEL_NAME,
-        "prompt": prompt,
-        "stream": False
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 500
     }
 
-    with httpx.Client(timeout=60.0) as client:
-        response = client.post(OLLAMA_URL, json=payload)
+    with httpx.Client(timeout=30.0) as client:
+        response = client.post(GROQ_API_URL, json=payload, headers=headers)
         response.raise_for_status()
 
     result = response.json()
-    raw_text = result["response"].strip()
+    raw_text = result["choices"][0]["message"]["content"].strip()
 
     try:
         start = raw_text.find("{")
         end = raw_text.rfind("}") + 1
-        json_str = raw_text[start:end]
-        parsed = json.loads(json_str)
+        parsed = json.loads(raw_text[start:end])
+        response_text = parsed.get("response", "")
+        if response_text.startswith("{"):
+            inner = json.loads(response_text)
+            response_text = inner.get("response", response_text)
         return {
-            "response": parsed.get("response", "Sorry, please try again."),
+            "response": response_text,
             "severity": parsed.get("severity", "low")
         }
     except Exception:
-        return {
-            "response": raw_text,
-            "severity": "low"
-        }
+        return {"response": raw_text, "severity": "low"}
