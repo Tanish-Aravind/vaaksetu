@@ -1,27 +1,22 @@
-from faster_whisper import WhisperModel
+from groq import Groq
 import tempfile
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
-model = None
-
-def get_model():
-    global model
-    if model is None:
-        model = WhisperModel("base", device="cpu", compute_type="int8")
-    return model
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 def transcribe_audio(audio_bytes: bytes, language: str = "kn") -> str:
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         tmp.write(audio_bytes)
         tmp_path = tmp.name
     try:
-        segments, info = get_model().transcribe(
-    tmp_path,
-    language=language,
-    task="transcribe",
-    beam_size=5
-)
-        transcript = " ".join(segment.text for segment in segments)
-        return transcript.strip()
+        with open(tmp_path, "rb") as audio_file:
+            transcription = client.audio.transcriptions.create(
+                file=("recording.wav", audio_file),
+                model="whisper-large-v3",
+                language=language if language in ["en", "kn"] else "kn",
+            )
+        return transcription.text.strip()
     finally:
         os.unlink(tmp_path)
