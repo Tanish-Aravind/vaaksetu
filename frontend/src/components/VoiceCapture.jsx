@@ -82,25 +82,33 @@ export default function VoiceCapture({
   const chunksRef = useRef([])
   const lang = t[language] || t.kn
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
-      mediaRecorderRef.current = mediaRecorder
-      chunksRef.current = []
-      mediaRecorder.ondataavailable = (e) => chunksRef.current.push(e.data)
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/wav" })
-        await transcribeAudio(blob)
-        stream.getTracks().forEach(t => t.stop())
-      }
-      mediaRecorder.start()
-      setRecording(true)
-      toast(lang.recording)
-    } catch {
-      toast.error(lang.micError)
+const startRecording = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm')
+      ? 'audio/webm'
+      : 'audio/ogg'
+    
+    const mediaRecorder = new MediaRecorder(stream, { mimeType })
+    mediaRecorderRef.current = mediaRecorder
+    chunksRef.current = []
+    mediaRecorder.ondataavailable = (e) => chunksRef.current.push(e.data)
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: mimeType })
+      await transcribeAudio(blob)
+      stream.getTracks().forEach(t => t.stop())
     }
+    mediaRecorder.start()
+    setRecording(true)
+    toast(lang.recording)
+  } catch (err) {
+    toast.error(lang.micError)
+    console.error(err)
   }
+}
 
   const stopRecording = () => {
     if (mediaRecorderRef.current) {
@@ -109,19 +117,21 @@ export default function VoiceCapture({
     }
   }
 
-  const transcribeAudio = async (blob) => {
-    const formData = new FormData()
-    formData.append("audio", blob, "recording.wav")
-    formData.append("language", language === "en" ? "en" : "kn")
-    try {
-      toast(lang.transcribing)
-      const res = await axios.post(`${API_URL}/transcribe`, formData)
-      setTranscript(res.data.transcript)
-      await sendToGemma(res.data.transcript)
-    } catch {
-      toast.error(lang.transcriptError)
-    }
+const transcribeAudio = async (blob) => {
+  const formData = new FormData()
+  const extension = blob.type.includes('ogg') ? 'ogg' : 'webm'
+  formData.append("audio", blob, `recording.${extension}`)
+  formData.append("language", "kn")
+  try {
+    toast(lang.transcribing)
+    const res = await axios.post(`${API_URL}/transcribe`, formData)
+    setTranscript(res.data.transcript)
+    await sendToGemma(res.data.transcript)
+  } catch (err) {
+    toast.error(lang.transcriptError)
+    console.error(err)
   }
+}
 
 const sendToGemma = async (message) => {
   setLoading(true)
