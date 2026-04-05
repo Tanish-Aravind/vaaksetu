@@ -1,0 +1,8 @@
+{
+  "messages": [
+    {"role": "user", "content": "ನನಗೆ ತುಂಬಾ ಒತ್ತಡ ಆಗುತ್ತಿದೆ"},
+    {"role": "assistant", "content": "ನಿಮ್ಮ ನೋವು ಅರ್ಥವಾಗುತ್ತದೆ"},
+    {"role": "user", "content": "ತಿಂಗಳಿಂದ ನಿದ್ದೆ ಬರುತ್ತಿಲ್ಲ"}
+  ],
+  "severity": "medium"
+}
